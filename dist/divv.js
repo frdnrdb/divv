@@ -325,65 +325,6 @@ const parse = (html, root = []) => {
   }
   return root.flat();
 };
-const consolidateArray = (map, id, newItem) => {
-  map[id] = map[id] || [];
-  if (!map[id].some((item) => item === newItem)) {
-    map[id].push(newItem);
-  }
-};
-const conditions = {};
-const conditionTriggers = {};
-const addConditionTrigger = (id, func, prop, obj) => {
-  conditionTriggers[prop] = conditionTriggers[prop] || {};
-  conditionTriggers[prop][id] = conditions[id];
-  makeProxy(obj[prop], prop, func);
-};
-const addCondition = (id, func, prop, obj) => {
-  if (prop) {
-    consolidateArray(conditions, id, func);
-    addConditionTrigger(id, func, prop, obj);
-    makeProxy(obj, prop, func, obj);
-  }
-  func();
-};
-const observables = {};
-const observerdArrays = {};
-const makeProxy = (o, prop, func, data) => {
-  if (typeof o !== "object") {
-    return;
-  }
-  if (isType.arr(o[prop])) {
-    consolidateArray(observerdArrays, prop, func);
-  }
-  if (o[int.IS_PROXY]) {
-    return o[int.PROXY_OBSERVE](func);
-  }
-  proxify(o, func, getPropNameCaseInsensitive(prop, data), data);
-};
-const addObservable = (o, prop, func, data) => {
-  makeProxy(o, prop, func, data);
-  consolidateArray(observables, prop, func);
-  func();
-};
-let valueString;
-const did = {};
-const observe = (e) => {
-  const { key, value, operation, data } = e;
-  if (operation === "set" && observerdArrays[key]) {
-    observerdArrays[key].forEach((func) => addObservable(data[key], key, func));
-  }
-  valueString = JSON.stringify(value);
-  if (did[key] === valueString) {
-    return;
-  }
-  did[key] = valueString;
-  if (observables[key]) {
-    observables[key].forEach((func) => func(e));
-  }
-  if (conditionTriggers[key]) {
-    Object.values(conditionTriggers[key]).forEach((arr) => arr.forEach((func) => func(e)));
-  }
-};
 const fulfill = (val) => typeof val === "function" ? val() : val;
 const makeFunction = (str, o) => {
   try {
@@ -426,7 +367,7 @@ const pushOrSet = (o, ref, node) => {
   }
   o[ref] = node;
 };
-const getPropNameCaseInsensitive$1 = (prop, o) => {
+const getPropNameCaseInsensitive = (prop, o) => {
   return !!o[prop] ? prop : Object.keys(o).find((key) => key.toLowerCase() === prop);
 };
 const toProperCase = (str = "", o) => {
@@ -437,7 +378,7 @@ const toProperCase = (str = "", o) => {
       return props2;
     }
     const [word] = part.match(/[^\s\[\]]+/);
-    const prop = getPropNameCaseInsensitive$1(word, obj) || word;
+    const prop = getPropNameCaseInsensitive(word, obj) || word;
     if (!mainProp) {
       mainProp = prop;
     }
@@ -450,9 +391,66 @@ const toProperCase = (str = "", o) => {
   }, []);
   return { prop: mainProp, token: props.join(".") };
 };
-const AddNode = (data, props, divv2) => {
-  props.refs = [];
-  const refs = props.refs;
+const consolidateArray = (map, id, newItem) => {
+  map[id] = map[id] || [];
+  if (!map[id].some((item) => item === newItem)) {
+    map[id].push(newItem);
+  }
+};
+const conditions = {};
+const conditionTriggers = {};
+const addConditionTrigger = (id, func, prop, obj) => {
+  conditionTriggers[prop] = conditionTriggers[prop] || {};
+  conditionTriggers[prop][id] = conditions[id];
+  makeProxy(obj[prop], prop, func, obj);
+};
+const addCondition = (id, func, prop, obj) => {
+  if (prop) {
+    consolidateArray(conditions, id, func);
+    addConditionTrigger(id, func, prop, obj);
+    makeProxy(obj, prop, func, obj);
+  }
+  func();
+};
+const observables = {};
+const observerdArrays = {};
+const makeProxy = (o, prop, func, data) => {
+  if (typeof o !== "object") {
+    return;
+  }
+  if (isType.arr(data[prop])) {
+    consolidateArray(observerdArrays, prop, func);
+  }
+  if (o[int.IS_PROXY]) {
+    return o[int.PROXY_OBSERVE](func);
+  }
+  proxify(o, func, getPropNameCaseInsensitive(prop, data), data);
+};
+const addObservable = (o, prop, func, data) => {
+  makeProxy(o, prop, func, data);
+  consolidateArray(observables, prop, func);
+  func();
+};
+let valueString;
+const did = {};
+const observe = (e) => {
+  const { key, value, operation, data } = e;
+  if (operation === "set" && observerdArrays[key]) {
+    observerdArrays[key].forEach((func) => addObservable(data[key], key, func, data));
+  }
+  valueString = JSON.stringify(value);
+  if (did[key] === valueString) {
+    return;
+  }
+  did[key] = valueString;
+  if (observables[key]) {
+    observables[key].forEach((func) => func(e));
+  }
+  if (conditionTriggers[key]) {
+    Object.values(conditionTriggers[key]).forEach((arr) => arr.forEach((func) => func(e)));
+  }
+};
+const AddNode = (data, props, refs, divv2) => {
   const makeLoop = (parent, o) => {
     const { alias, prop, destructured, isBlock, children = [] } = o;
     const { token } = toProperCase(prop, data);
@@ -665,10 +663,11 @@ const AddNode = (data, props, divv2) => {
   return addNode;
 };
 const createTemplate = (state, divv2) => {
-  const { props, tag: template, parent } = state;
+  const { props, tag: template, parent = {} } = state;
+  props.refs = [];
   const data = proxify(props.data || {}, observe, "data", props);
-  const scope = Object.assign(parent, divv2("span", props));
-  const addNode = AddNode(data, props, divv2);
+  const scope = divv2("span", props);
+  const addNode = AddNode(data, props, props.refs, divv2);
   parse(template).forEach((o) => addNode(parent, o));
   props.inserted && props.inserted.call(scope);
 };
@@ -908,7 +907,7 @@ function prefetch(state, append) {
 }
 const CONSTRUCTOR_PROPS = ["style", "css", "on", "text", "textContent", "html", "innerHTML"];
 const COMPONENT_RESERVED_PROPS = ["constructor", "connected", "disconnected", "adopted", "template"];
-const META_PROPS = ["watch", "observe", "state", "fetch", "isChild", "refs"];
+const META_PROPS = ["watch", "observe", "state", "fetch", "isChild"];
 const validElements = "html,base,head,link,meta,script,style,title,body,address,article,aside,footer,header,h1,h2,h3,h4,h5,h6,main,nav,section,body,blockquote,cite,dd,dt,dl,div,figcaption,figure,hr,li,ol,p,pre,ul,a,href,abbr,b,bdi,bdo,br,code,data,time,dfn,em,i,kbd,mark,q,rb,ruby,rp,rt,rtc,s,del,ins,samp,small,x-small,span,class,id,lang,strong,sub,sup,u,var,wbr,area,audio,src,source,MediaStream,img,map,track,video,embed,iframe,object,param,picture,portal,svg,math,canvas,noscript,caption,col,colgroup,table,tbody,tr,td,tfoot,th,scope,headers,thead,button,datalist,option,fieldset,label,form,input,legend,meter,optgroup,select,output,progress,textarea,details,dialog,menu,summary,slot,template,acronym,applet,basefont,bgsound,big,medium,large,blink,center,content,dir,font,frame,frameset,hgroup,h1,h2,h3,h4,h5,h6,image,isindex,keygen,listing,marquee,menuitem,multicol,nextid,nobr,noembed,noframes,plaintext,shadow,spacer,strike,tt,xmp";
 const validHTML = new Set(validElements.split(","));
 const onCreated = (state) => {
