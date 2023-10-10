@@ -10,7 +10,7 @@ import { onEvent } from './event';
 
 const CONSTRUCTOR_PROPS = [ 'style', 'css', 'on', 'text', 'textContent', 'html', 'innerHTML' ];
 const COMPONENT_RESERVED_PROPS = [ 'constructor', 'connected', 'disconnected', 'adopted', 'template' ];
-const META_PROPS = [ 'watch', 'observe', 'state', 'fetch', 'isChild', 'refs' ];
+const META_PROPS = [ 'watch', 'observe', 'state', 'fetch', 'isChild' ];
 
 /*
     https://developer.mozilla.org/en-US/docs/Web/HTML/Element Apr. 21, 2021

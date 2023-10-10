@@ -52,7 +52,7 @@ export const pushOrSet = (o, ref, node) => {
   o[ref] = node;
 };
 
-const getPropNameCaseInsensitive = (prop, o) => {
+export const getPropNameCaseInsensitive = (prop, o) => {
   return !!o[prop] ? prop : Object.keys(o).find(key => key.toLowerCase() === prop);
 };
 

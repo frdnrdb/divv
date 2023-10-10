@@ -1,12 +1,10 @@
-import { int, ext, breakCharacter } from '../common';
+import { ext, breakCharacter } from '../common';
 import { isType } from '../helpers';
 import { parseAlias } from './parse';
 import { addObservable, addCondition } from './proxy';
 import { makeFunction, getProp, replaceDotAlias, toProperCase, pushOrSet } from './helpers';
 
-export const AddNode = (data, props, divv) => {
-  props.refs = [];
-  const refs = props.refs;
+export const AddNode = (data, props, refs, divv) => {
 
   const makeLoop = (parent, o) => {
     const { alias, prop, destructured, isBlock, children = [] } = o;

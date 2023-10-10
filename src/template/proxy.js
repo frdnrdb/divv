@@ -1,6 +1,7 @@
 import { int } from '../common';
 import { isType } from '../helpers';
 import { proxify } from '../proxy';
+import { getPropNameCaseInsensitive } from './helpers';
 
 const consolidateArray = (map, id, newItem) => {
   map[id] = map[id] || [];
@@ -17,7 +18,7 @@ const conditionTriggers = {};
 const addConditionTrigger = (id, func, prop, obj) => {
   conditionTriggers[prop] = conditionTriggers[prop] || {};
   conditionTriggers[prop][id] = conditions[id];
-  makeProxy(obj[prop], prop, func); 
+  makeProxy(obj[prop], prop, func, obj); 
 };
 
 export const addCondition = (id, func, prop, obj) => {
@@ -40,7 +41,7 @@ const makeProxy = (o, prop, func, data) => {
   }
 
   // re-observe local changes if data.prop = set, vs data.prop.push etc
-  if (isType.arr(o[prop])) {
+  if (isType.arr(data[prop])) {
     consolidateArray(observerdArrays, prop, func);
   }   
 
@@ -66,7 +67,7 @@ export const observe = e => {
 
   // if array prop is replaced, re-proxify
   if (operation === 'set' && observerdArrays[key]) {
-    observerdArrays[key].forEach(func => addObservable(data[key], key, func));
+    observerdArrays[key].forEach(func => addObservable(data[key], key, func, data));
   }
 
   // don't populate if value is set to the same as previous value
