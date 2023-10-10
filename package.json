@@ -1,6 +1,6 @@
 {
   "name": "divv",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "files": [
     "dist"
   ],
@@ -13,7 +13,9 @@
     }
   },
   "scripts": {
-    "build": "vite build"
+    "build": "vite build",
+    "commit": "git add -A && git commit",
+    "deploy": "npm version patch --no-git-tag-version && npm run commit && npm run build && npm publish"
   },
   "devDependencies": {
     "terser": "^5.21.0",
