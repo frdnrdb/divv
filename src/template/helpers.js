@@ -7,13 +7,13 @@ export const makeFunction = (str, o) => {
     return fulfill(new Function(...Object.keys(o), `return ${str.trim()}`).apply(null, Object.values(o)));
   }
   catch(err) {
-    console.warn(err.message);
-    return '';
+    console.warn(err.message, str);
+    return str;
   }
 };
 
 export const getProp = (str, o) => {
-  if (typeof o !== 'object' || typeof str !== 'string' || !str.length) return;
+  if (!isType.obj(o) || !isType.str(str) || !str.length) return str;
 
   const arr = str.split(/[\[\]\?\.]/).filter(Boolean); // some.array[3]?.prop => some array 3 prop
 
@@ -32,7 +32,12 @@ export const replaceDotAlias = (o, str, loopAlias = '', loopProp, index, isEval)
     : /@([a-z0-9\[\].]+)/gi;
   return str.replace(re, (_, dotAlias) => {
     if (dotAlias) {
-      if (dotAlias === 'index') return index;
+      if (loopProp && dotAlias === 'index') {
+        return index;
+      }
+      if (!isType.obj(o)) {
+        return o;
+      }
       return (isEval ? makeFunction : getProp)(dotAlias, o);
     }
     return fulfill(o);

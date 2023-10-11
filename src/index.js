@@ -1,23 +1,16 @@
 import { int } from './common';
-import { isType } from './helpers';
+import { isType, hash } from './helpers';
 import { createTemplate } from './template';
 import { onInserted } from './observer';
-import { createElement } from './element';
 import { createCustomElement } from './custom';
 import { prefetch } from './fetch';
 import { insertShadowStyle } from './style';
 import { onEvent } from './event';
+import { addObserver, addEmitter, addState } from './observer';
 
 const CONSTRUCTOR_PROPS = [ 'style', 'css', 'on', 'text', 'textContent', 'html', 'innerHTML' ];
 const COMPONENT_RESERVED_PROPS = [ 'constructor', 'connected', 'disconnected', 'adopted', 'template' ];
 const META_PROPS = [ 'watch', 'observe', 'state', 'fetch', 'isChild' ];
-
-/*
-    https://developer.mozilla.org/en-US/docs/Web/HTML/Element Apr. 21, 2021
-*/
-const validElements = 'html,base,head,link,meta,script,style,title,body,address,article,aside,footer,header,h1,h2,h3,h4,h5,h6,main,nav,section,body,blockquote,cite,dd,dt,dl,div,figcaption,figure,hr,li,ol,p,pre,ul,a,href,abbr,b,bdi,bdo,br,code,data,time,dfn,em,i,kbd,mark,q,rb,ruby,rp,rt,rtc,s,del,ins,samp,small,x-small,span,class,id,lang,strong,sub,sup,u,var,wbr,area,audio,src,source,MediaStream,img,map,track,video,embed,iframe,object,param,picture,portal,svg,math,canvas,noscript,caption,col,colgroup,table,tbody,tr,td,tfoot,th,scope,headers,thead,button,datalist,option,fieldset,label,form,input,legend,meter,optgroup,select,output,progress,textarea,details,dialog,menu,summary,slot,template,acronym,applet,basefont,bgsound,big,medium,large,blink,center,content,dir,font,frame,frameset,hgroup,h1,h2,h3,h4,h5,h6,image,isindex,keygen,listing,marquee,menuitem,multicol,nextid,nobr,noembed,noframes,plaintext,shadow,spacer,strike,tt,xmp';
-
-const validHTML = new Set(validElements.split(','));
 
 // --->
 
@@ -108,19 +101,28 @@ const output = state => {
 
 // --->
 
-function createText(tag, parent = document.body, text = '') {
-    return parent.appendChild(
-        document[tag === 'text' ? 'createTextNode' : 'createComment'](text)
-    );    
+function createText(tag, parent = document.body, props) {
+    const str = isType.str(props);
+    const node = document[tag === 'text' ? 'createTextNode' : 'createComment'](str ? props : props.text);
+    if (!str && props.inserted) {
+        onInserted({ props, node, parent });
+    }
+    return parent.appendChild(node);
 }
 
 // --->
 
 function createNode(state) {
-    state.isCustom
-        ? createCustomElement(state)
-        : createElement(state);
+    const { props, parent, isCustom } = state;
 
+    isCustom && createCustomElement(state);
+         
+    state.node[int.PROPS] = props;
+    state.node[int.ID] = hash();
+  
+    addObserver(state);
+    addEmitter(state, isCustom ? state.node : parent);
+    addState(state);
     addShadowRefs(state);
 
     return state;
@@ -133,8 +135,8 @@ function validate(state) {
         'class': 'className',
         'html': 'innerHTML',
         'text': 'textContent',
-        'css': 'style'
-        //'constructor': 'constructor'
+        'css': 'style',
+        'constructor': 'constructor'
     };
 
     const valueAlias = {
@@ -148,7 +150,8 @@ function validate(state) {
         ...unvalidatedProps
     };
 
-    state.isCustom = !validHTML.has(tag);
+    state.node = document.createElement(tag);   
+    state.isCustom = state.node instanceof HTMLUnknownElement || tag.includes('-');
 
     state.props = Object.entries(withDefaultValues).reduce((o, [key, value]) => {
         if (!state.isCustom && COMPONENT_RESERVED_PROPS.includes(key)) {
@@ -191,7 +194,7 @@ export function divv() {
         return createTemplate({ tag, parent, props }, divv);
     }
     if (/^(text|comment)$/.test(tag)) {
-        return createText(tag, parent, props.text);
+        return createText(tag, parent, props);
     }
 
     return createTag({ tag, parent, props });

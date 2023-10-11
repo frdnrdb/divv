@@ -4,7 +4,8 @@ import { parseAlias } from './parse';
 import { addObservable, addCondition } from './proxy';
 import { makeFunction, getProp, replaceDotAlias, toProperCase, pushOrSet } from './helpers';
 
-export const AddNode = (data, props, refs, divv) => {
+export const CreateAddNode = (props, divv) => {
+  const { data, refs } = props;
 
   const makeLoop = (parent, o) => {
     const { alias, prop, destructured, isBlock, children = [] } = o;
@@ -111,14 +112,14 @@ export const AddNode = (data, props, refs, divv) => {
     return parts.filter(Boolean).forEach(o => addNode(parent, o));
   };
 
-  const insertNode = (parent, o) => {
+  const insertNode = (parent, o) => {    
     const { type, name, attrs = {}, text = '' } = o;
-
+    
     const args = [name || type, parent, {
       tag: name || type,
       text,
       attrs,
-      passive: true  
+      passive: true
     }];
     
     return divv(...args.filter(Boolean));

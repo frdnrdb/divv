@@ -1,10 +1,10 @@
 import { isType } from './helpers';
+import { observerResponse } from './observer';
 
 export function prefetch(state, append) {
-  const { fetch: prefetch } = state.props;
+  const { props: { fetch: prefetch }, node } = state;
   if (!prefetch) return;
 
-  const { node } = state.refs;
   node.data = node.data || {};
 
   const fetchers = Object.entries(prefetch).map(([ key, config ]) => {

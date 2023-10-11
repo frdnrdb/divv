@@ -6,33 +6,40 @@ import { attachOffSwitch } from './event';
 export const onInserted = state => {
   const { props: { passive, inserted, isChild }, node, parent } = state;
 
-  if (passive || !inserted || !parent) return state;
+  if (!parent) {
+    return state;
+  }
+
+  const constructor = node.customConstructor;
+  if (!constructor && (passive || !inserted)) return state;
 
   const parentNode = parent.host || parent;
-  const func = () => inserted.call(node, parent);
+  const func = () => {
+    constructor ? constructor.call(node) : inserted.call(node, parent);
+  };
 
   /*
       make sure parent and children [inserted] callbacks are executed in the right order:
       parent > child > inner child
   */
   if (isChild) {
-      if (parentNode[int.ROOT][int.INSERTED_int.EMITTER]) {
-          parentNode[int.ROOT][int.INSERTED_int.EMITTER].push(func);
+      if (parentNode[int.ROOT][int.INSERTED_EMITTER]) {
+          parentNode[int.ROOT][int.INSERTED_EMITTER].push(func);
           return state;
       }
       parentNode[int.ROOT] = parent;
   }
 
-  parentNode[int.INSERTED_int.EMITTER] = [ func ];
+  parentNode[int.INSERTED_EMITTER] = [ func ];
 
   new MutationObserver((list, observer) => {
       for (const record of list) {
           for (const child of record.addedNodes) {
-              if (child === node) {
-                  observer.disconnect();
-                  parentNode[int.INSERTED_int.EMITTER].forEach(func => func());
-                  break;
-              }
+            if (child === node) {
+                observer.disconnect();
+                parentNode[int.INSERTED_EMITTER].forEach(func);
+                break;
+            }
           }
       }
   }).observe(parent, {
@@ -42,7 +49,7 @@ export const onInserted = state => {
   return state;
 };
 
-const observerResponse = (node, type) => detail => {
+export const observerResponse = (node, type) => detail => {
   node[int.OBSERVER] && node[int.OBSERVER]({
       type,
       ...detail

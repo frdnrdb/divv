@@ -36,13 +36,9 @@ function traverseConstructorProps(tag, props, shadow) {
   }
 };
 
-const ensureValidTag = proposedTag => {
-  return `${proposedTag.toLowerCase()}${proposedTag.includes('-') ? '' : '-component'}`;
-};
-
 export function createCustomElement(state) {
-  const { props, tag: unvalidatedTag } = state;
-  const tag = ensureValidTag(unvalidatedTag);
+  const { props, tag: unvalidatedTag, parent } = state;
+  const tag = unvalidatedTag.replace(/[^a-zA-Z-]/g, '');
 
   const RegisteredElement = customElements.get(tag);
   if (RegisteredElement) {
@@ -57,9 +53,6 @@ export function createCustomElement(state) {
           state.node = this;
 
           const shadow = this.attachShadow({ mode: 'open' });
-
-          this[int.PROPS] = props;
-          this[int.ID] = hash(tag);
           this[int.STYLESHEET] = shadow.appendChild(document.createElement('style'));
 
           traverseConstructorProps.call(this, tag, props, shadow);
@@ -68,12 +61,6 @@ export function createCustomElement(state) {
           shadow.appendChild(document.createElement('slot'));
 
           // skipping "static get observedAttributes()" alongside "attributeChangedCallback()"
-          // in favor of a more dynamic approach
-          addObserver(state);
-          addEmitter(state, this);
-          addState(state);
-
-          constructor && constructor.call(this);
       }
   };
                   
@@ -83,6 +70,8 @@ export function createCustomElement(state) {
   disconnected && (ref.disConnectedCallback = disconnected);
   adopted && (ref.adoptedCallback = adopted);
   
+    constructor && (ref.customConstructor = constructor);
+
   customElements.define(tag, CustomElement);
 
   new CustomElement();

@@ -330,13 +330,13 @@ const makeFunction = (str, o) => {
   try {
     return fulfill(new Function(...Object.keys(o), `return ${str.trim()}`).apply(null, Object.values(o)));
   } catch (err) {
-    console.warn(err.message);
-    return "";
+    console.warn(err.message, str);
+    return str;
   }
 };
 const getProp = (str, o) => {
-  if (typeof o !== "object" || typeof str !== "string" || !str.length)
-    return;
+  if (!isType.obj(o) || !isType.str(str) || !str.length)
+    return str;
   const arr = str.split(/[\[\]\?\.]/).filter(Boolean);
   for (let key of arr) {
     if (o[key] === void 0) {
@@ -350,8 +350,12 @@ const replaceDotAlias = (o, str, loopAlias = "", loopProp, index, isEval) => {
   const re = loopAlias ? new RegExp(`@${loopProp ? `(${loopAlias.join("|")})` : `${loopAlias}(?:\\.)?([a-z0-9\\[\\].]+)?`}`, "gi") : /@([a-z0-9\[\].]+)/gi;
   return str.replace(re, (_, dotAlias) => {
     if (dotAlias) {
-      if (dotAlias === "index")
+      if (loopProp && dotAlias === "index") {
         return index;
+      }
+      if (!isType.obj(o)) {
+        return o;
+      }
       return (isEval ? makeFunction : getProp)(dotAlias, o);
     }
     return fulfill(o);
@@ -450,7 +454,8 @@ const observe = (e) => {
     Object.values(conditionTriggers[key]).forEach((arr) => arr.forEach((func) => func(e)));
   }
 };
-const AddNode = (data, props, refs, divv2) => {
+const CreateAddNode = (props, divv2) => {
+  const { data, refs } = props;
   const makeLoop = (parent, o) => {
     const { alias, prop, destructured, isBlock, children = [] } = o;
     const { token } = toProperCase(prop, data);
@@ -665,11 +670,10 @@ const AddNode = (data, props, refs, divv2) => {
 const createTemplate = (state, divv2) => {
   const { props, tag: template, parent = {} } = state;
   props.refs = [];
-  const data = proxify(props.data || {}, observe, "data", props);
-  const scope = divv2("span", props);
-  const addNode = AddNode(data, props, props.refs, divv2);
+  proxify(props.data || {}, observe, "data", props);
+  const addNode = CreateAddNode(props, divv2);
   parse(template).forEach((o) => addNode(parent, o));
-  props.inserted && props.inserted.call(scope);
+  props.inserted && props.inserted.call(divv2("span", props));
 };
 const attachOffSwitch = (key, node, func) => {
   node.off = node.off || ((event) => node.off._list[event] && node.off._list[event]());
@@ -684,24 +688,30 @@ const onEvent = (node, once) => (key, value) => {
 };
 const onInserted = (state) => {
   const { props: { passive, inserted, isChild }, node, parent } = state;
-  if (passive || !inserted || !parent)
+  if (!parent) {
+    return state;
+  }
+  const constructor = node.customConstructor;
+  if (!constructor && (passive || !inserted))
     return state;
   const parentNode = parent.host || parent;
-  const func = () => inserted.call(node, parent);
+  const func = () => {
+    constructor ? constructor.call(node) : inserted.call(node, parent);
+  };
   if (isChild) {
-    if (parentNode[int.ROOT][int.INSERTED_int.EMITTER]) {
-      parentNode[int.ROOT][int.INSERTED_int.EMITTER].push(func);
+    if (parentNode[int.ROOT][int.INSERTED_EMITTER]) {
+      parentNode[int.ROOT][int.INSERTED_EMITTER].push(func);
       return state;
     }
     parentNode[int.ROOT] = parent;
   }
-  parentNode[int.INSERTED_int.EMITTER] = [func];
+  parentNode[int.INSERTED_EMITTER] = [func];
   new MutationObserver((list, observer) => {
     for (const record of list) {
       for (const child of record.addedNodes) {
         if (child === node) {
           observer.disconnect();
-          parentNode[int.INSERTED_int.EMITTER].forEach((func2) => func2());
+          parentNode[int.INSERTED_EMITTER].forEach(func);
           break;
         }
       }
@@ -711,7 +721,7 @@ const onInserted = (state) => {
   });
   return state;
 };
-const observerResponse$1 = (node, type) => (detail) => {
+const observerResponse = (node, type) => (detail) => {
   node[int.OBSERVER] && node[int.OBSERVER]({
     type,
     ...detail
@@ -722,7 +732,7 @@ const observerResponse$1 = (node, type) => (detail) => {
 };
 function observeAttributes(node, observerFunction) {
   node[int.OBSERVER] = observerFunction.bind(node);
-  const callback = observerResponse$1(node, "attribute");
+  const callback = observerResponse(node, "attribute");
   const oldValues = Array.from(node.attributes).reduce((list, attr) => Object.assign(list, { [attr.name]: attr.value }), {});
   const observer = new MutationObserver((list) => list.forEach((m) => {
     const value = m.target.getAttribute(m.attributeName) ?? void 0;
@@ -743,7 +753,7 @@ function addEmitter(state, parent) {
     return;
   }
   const ref = parent.host || parent || {};
-  const callback = observerResponse$1(node, "event");
+  const callback = observerResponse(node, "event");
   node[int.EMITTER] = ref[int.EMITTER] || [];
   node[int.EMITTER].push(node);
   node[ext.EMIT] = (event, detail) => {
@@ -769,7 +779,7 @@ function addProxyObserver(node) {
       return console.warn("callback not specified");
     return proxify(
       data,
-      callback ? (object) => callback(Object.assign({ type: "observe", data }, object)) : observerResponse$1(node, "observe")
+      callback ? (object) => callback(Object.assign({ type: "observe", data }, object)) : observerResponse(node, "observe")
     );
   };
 }
@@ -783,18 +793,9 @@ function addState(state) {
     console.warn("[state] must be of type object. value moved to state.value");
     nodeState = { value: nodeState };
   }
-  proxify(nodeState, observerResponse$1(node, "state"), "state", node);
+  proxify(nodeState, observerResponse(node, "state"), "state", node);
   node.observe = addProxyObserver(node);
 }
-const createElement = (state) => {
-  const { props, tag, parent } = state;
-  state.node = document.createElement(tag);
-  state.node[int.PROPS] = props;
-  state.node[int.ID] = hash();
-  addObserver(state);
-  addEmitter(state, parent);
-  addState(state);
-};
 const RE_BODY_TAG_IN_CSS = "(?!^|[\\s\\t\\r\\n]+)body(?=[\\s\\{])";
 const camelToDash = (str) => str.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
 const useHostSelector = (tag, css) => {
@@ -844,12 +845,9 @@ function traverseConstructorProps(tag, props, shadow) {
     Object.entries(on).forEach(([e, func]) => onEvent(this, e === "once")(e, func));
   }
 }
-const ensureValidTag = (proposedTag) => {
-  return `${proposedTag.toLowerCase()}${proposedTag.includes("-") ? "" : "-component"}`;
-};
 function createCustomElement(state) {
-  const { props, tag: unvalidatedTag } = state;
-  const tag = ensureValidTag(unvalidatedTag);
+  const { props, tag: unvalidatedTag, parent } = state;
+  const tag = unvalidatedTag.replace(/[^a-zA-Z-]/g, "");
   const RegisteredElement = customElements.get(tag);
   if (RegisteredElement) {
     return state.node = new RegisteredElement();
@@ -860,29 +858,23 @@ function createCustomElement(state) {
       super();
       state.node = this;
       const shadow = this.attachShadow({ mode: "open" });
-      this[int.PROPS] = props;
-      this[int.ID] = hash();
       this[int.STYLESHEET] = shadow.appendChild(document.createElement("style"));
       traverseConstructorProps.call(this, tag, props, shadow);
       shadow.appendChild(document.createElement("slot"));
-      addObserver(state);
-      addEmitter(state, this);
-      addState(state);
-      constructor && constructor.call(this);
     }
   }
   const ref = CustomElement.prototype;
   connected && (ref.connectedCallback = connected);
   disconnected && (ref.disConnectedCallback = disconnected);
   adopted && (ref.adoptedCallback = adopted);
+  constructor && (ref.customConstructor = constructor);
   customElements.define(tag, CustomElement);
   new CustomElement();
 }
 function prefetch(state, append) {
-  const { fetch: prefetch2 } = state.props;
+  const { props: { fetch: prefetch2 }, node } = state;
   if (!prefetch2)
     return;
-  const { node } = state.refs;
   node.data = node.data || {};
   const fetchers = Object.entries(prefetch2).map(([key, config]) => {
     const [url, options = {}] = isType.str(config) ? [config] : [config.url, config.options];
@@ -908,8 +900,6 @@ function prefetch(state, append) {
 const CONSTRUCTOR_PROPS = ["style", "css", "on", "text", "textContent", "html", "innerHTML"];
 const COMPONENT_RESERVED_PROPS = ["constructor", "connected", "disconnected", "adopted", "template"];
 const META_PROPS = ["watch", "observe", "state", "fetch", "isChild"];
-const validElements = "html,base,head,link,meta,script,style,title,body,address,article,aside,footer,header,h1,h2,h3,h4,h5,h6,main,nav,section,body,blockquote,cite,dd,dt,dl,div,figcaption,figure,hr,li,ol,p,pre,ul,a,href,abbr,b,bdi,bdo,br,code,data,time,dfn,em,i,kbd,mark,q,rb,ruby,rp,rt,rtc,s,del,ins,samp,small,x-small,span,class,id,lang,strong,sub,sup,u,var,wbr,area,audio,src,source,MediaStream,img,map,track,video,embed,iframe,object,param,picture,portal,svg,math,canvas,noscript,caption,col,colgroup,table,tbody,tr,td,tfoot,th,scope,headers,thead,button,datalist,option,fieldset,label,form,input,legend,meter,optgroup,select,output,progress,textarea,details,dialog,menu,summary,slot,template,acronym,applet,basefont,bgsound,big,medium,large,blink,center,content,dir,font,frame,frameset,hgroup,h1,h2,h3,h4,h5,h6,image,isindex,keygen,listing,marquee,menuitem,multicol,nextid,nobr,noembed,noframes,plaintext,shadow,spacer,strike,tt,xmp";
-const validHTML = new Set(validElements.split(","));
 const onCreated = (state) => {
   const { props, node, parent } = state;
   props.created && props.created.call(node, parent);
@@ -979,13 +969,22 @@ const output = (state) => {
   node[int.CHILDREN] = Array.from((selfShadow || node).children).filter((n) => n.localName !== "style");
   return node;
 };
-function createText(tag, parent = document.body, text = "") {
-  return parent.appendChild(
-    document[tag === "text" ? "createTextNode" : "createComment"](text)
-  );
+function createText(tag, parent = document.body, props) {
+  const str = isType.str(props);
+  const node = document[tag === "text" ? "createTextNode" : "createComment"](str ? props : props.text);
+  if (!str && props.inserted) {
+    onInserted({ props, node, parent });
+  }
+  return parent.appendChild(node);
 }
 function createNode(state) {
-  state.isCustom ? createCustomElement(state) : createElement(state);
+  const { props, parent, isCustom } = state;
+  isCustom && createCustomElement(state);
+  state.node[int.PROPS] = props;
+  state.node[int.ID] = hash();
+  addObserver(state);
+  addEmitter(state, isCustom ? state.node : parent);
+  addState(state);
   addShadowRefs(state);
   return state;
 }
@@ -995,8 +994,8 @@ function validate(state) {
     "class": "className",
     "html": "innerHTML",
     "text": "textContent",
-    "css": "style"
-    //'constructor': 'constructor'
+    "css": "style",
+    "constructor": "constructor"
   };
   const valueAlias = {
     css: (value) => ({ cssText: value }),
@@ -1007,7 +1006,8 @@ function validate(state) {
     state: {},
     ...unvalidatedProps
   };
-  state.isCustom = !validHTML.has(tag);
+  state.node = document.createElement(tag);
+  state.isCustom = state.node instanceof HTMLUnknownElement || tag.includes("-");
   state.props = Object.entries(withDefaultValues).reduce((o, [key, value]) => {
     var _a;
     if (!state.isCustom && COMPONENT_RESERVED_PROPS.includes(key)) {
@@ -1042,7 +1042,7 @@ function divv() {
     return createTemplate({ tag, parent, props }, divv);
   }
   if (/^(text|comment)$/.test(tag)) {
-    return createText(tag, parent, props.text);
+    return createText(tag, parent, props);
   }
   return createTag({ tag, parent, props });
 }
